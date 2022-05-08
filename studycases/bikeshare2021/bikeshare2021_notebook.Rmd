@@ -1,0 +1,567 @@
+---
+title: "Bikeshare - Cyclistic company study case"
+author: "Obed Rios"
+date: "3/22/2022"
+output: 
+   bookdown::html_document2: default
+   keep_tex: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(knitr)
+library(tidyverse)
+library(lubridate)
+```
+
+# Introduction
+
+Cyclistic ^[[Website divvybikes.com](https://divvybikes.com/how-it-works)] launched an innovative bike-share program in 2016. The program has since expanded to a fleet of 5,824 bicycles that are geolocated and locked into 692 stations across Chicago. Any bike in the system can be unlocked from one station and returned to another at any time.
+
+Cyclistic's marketing strategy has been based on improving general awareness and appealing to a wide consumer base. The flexibility of its pricing options, including single-ride passes, full-day passes, and annual memberships, contributed to making these things possible. 
+
+In Cyclistic's view, the customer is as follows:
+
+- Customers who purchase single-ride or full-day passes are referred to as casual riders. 
+- Customers who purchase annual memberships are Cyclistic members.
+
+Cyclistic's financial analysts have concluded that annual members are much more profitable than casual riders. While Cyclistic's pricing flexibility attracts more customers, its director of marketing believes that maximizing the number of annual members will be a key to future growth. Instead of creating an advertising campaign that aims to attract all new customers, the director of marketing believes that there is a very good chance of converting casual riders into members. According to her, casual riders are already familiar with Cyclistic and have chosen Cyclistic to meet their mobility needs.
+
+## Goals
+
+### General Goal
+
+> Develop marketing strategies aimed at converting casual riders into members. To accomplish this, however, the marketing analyst team must first gain a deeper understanding of how annual members and casual riders differ, and why casual riders would choose to join. In addition, digital media might impact their marketing strategies. In order to identify trends, the marketing director and her team are interested in analyzing the Cyclistic historical data regarding bicycle trips.
+
+### Specifc Goal
+
+> Analyze data in order to understand and present how annual members and casual riders use Cyclistic bicycles differently.
+
+## Methodology
+
+In the present work, we used the CRISP-DM ^[[CRISP-DM Data Science Process Alliance.](https://www.datascience-pm.com/crisp-dm-2/)] ^[P. Chapman, J. Clinton, R. Kerber, T. Khabaza, T. Reinartzrysler, C. Shearer and R. Wirth, CRISP-DM 1.0: Step-by-Step Data Mining Guide, The CRISP-DM Consortium, SPSS (http://www.crisp-dm.org/CRISPWP-0800.pdf), 1999.] approach to get the first data insights about the customers behavior. 
+
+Initially we acquired the data from [Cyclistic 2021 Trip Data Repsository](https://divvy-tripdata.s3.amazonaws.com/index.html) provided by the data team., the we performed exploratory data analysis by cleaning missing data and verifying the variation convergence of the data. After clean and verify the data we explored the relationships using categorical values to explore the proportions of customers types and products usage.
+
+
+# Data Preparation
+Preparation of data (Data-Prep) is an essential step before modeling and making conclusions about data. According to some, this is the most difficult and time-consuming stage because 80% of the project is dedicated to data preparation and 20% to the modeling process ^[Pyle, D. (1999). Data preparation for data mining. Morgan Kaufmann.]. As part of data preparation, there are various stages such as data acquisition, collection, data exploration, or exploratory data analysis which involves data cleansing and identifying errors, as well as missing imputations. Preparation of data is often the key to solving a problem. In many situations, it will make the difference between success and failure, between usable insights and unclear murk, and between useful forecasts and useless guesses.  
+
+In this section, first we integrate the data from a given repository, then we perform an exploratory data analysis. First we cleaned the data and then we explore the structure and relationship between the variables.
+
+## Data Integration
+
+Initially, we used the following script to integrate data from several files:
+
+```{r Data Integration Procedure, eval=FALSE, include=TRUE}
+# Integrate Original Data
+fnames <- paste('data', dir('data'), sep = '/')
+bikeshare_2021 <- do.call(rbind, lapply(fnames, read.csv))
+write.csv(bikeshare_2021, "bikeshare2021_data.csv", row.names = F)
+```
+
+The consolidated data is then generated into an integrated *Comma-Separated Values (CSV)* file. We performed exploratory data analysis (EDA) by using the consolidated file. 
+
+
+## Exploratory Data Analysis (EDA)
+
+In any type of research analysis, exploratory data analysis is a necessary step. An exploratory analysis is conducted in order to analyze the data for distribution, outliers, and anomalies in order to determine which hypothesis should be tested in greater detail. It also provides tools for developing hypotheses by visualizing and understanding the data, usually through graphical displays ^[Komorowski, M., Marshall, D. C., Salciccioli, J. D., & Crutain, Y. (2016). Exploratory data analysis. Secondary analysis of electronic health records, 185-203.]. 
+
+Exploratory Data analysis is a fundamental early step after data collection and preprocessing. In the words of Howard Seltman (Carnegie Mellon University), "loosely speaking, exploratory data analysis refers to any method of looking at data that does not include a formal statistical model and inference.^[Seltman HJ (2012) Experimental design and analysis. [Online](http://www.stat.cmu.edu/
+*hseltman/309/Book/Book.pdf)]"  
+
+### Initial examination of data structure
+
+First we loaded the file using the following script:
+
+```{r Load Integrated original data}
+bikeshare2021 <- read_csv('bikeshare2021_data.csv')
+```
+Next, we used the following script to verify the original data structure based on the acquired data:
+
+```{r Verify initial data structure}
+glimpse(bikeshare2021)
+```
+We know that there are dates and global position coordinates. First we wanted to add transformed data such, How long does a customer use service? and 
+What is the distance from start point to end point?. To provide this information we used the following script to compute the distance from the starting point (where the service begins) to the end point (when the service ends):
+
+```{r Convert Latitude and Longitude Distance Coordinates to Meters }
+# Resource:
+# https://www.movable-type.co.uk/scripts/latlong.html
+dist.latlng_to_mts <- function(start.lat, start.lng, end.lat, end.lng){
+  R <- 6371e3
+  phi1 <- start.lat*pi/180
+  phi2 <- end.lat*pi/180
+  delta_phi <- (end.lat - start.lat)*pi/180
+  delta_lam <- (end.lng - start.lng)*pi/180
+  a <- sin(delta_phi/2)^2 + cos(phi1)*cos(phi2)*sin(delta_lam/2)^2
+  c <- 2*atan2(sqrt(a), sqrt(1-a))
+  d <- R*c # In meters
+  d
+}
+```
+
+Now we add the information by mutating the `bikeshare2021` dataset using:
+
+```{r Mutate to add Point2Point Length Distance in Kms, and Use Service Length in Minutes}
+# Mutate quantify data
+bikeshare2021 <- bikeshare2021 %>% mutate(
+      use.length_in_mins = as.numeric(ended_at - started_at)/60,
+      p2p.distance_in_kms = dist.latlng_to_mts(start_lat, start_lng, 
+                                               end_lat, end_lng)/1000) %>%
+      select(-c(ride_id))
+
+bikeshare2021 <- bikeshare2021 %>% mutate(week = week(started_at),
+                                          month = month(started_at), 
+                                          month_name = month.name[month(started_at)])
+bikeshare2021$rideable_type <- factor(bikeshare2021$rideable_type)
+bikeshare2021$member_casual <- factor(bikeshare2021$member_casual)
+```
+
+We have added the following variables, as you may have noticed 
+
+  - `use.length_in_mins` which represent the duration of the service.
+  - `p2p.distance_in_kms` which represents the distance from service starting point to service ending point.
+
+### Initial Data cleaning 
+
+In addition, the initial examination of the data structure revealed the existence of missing values. Because of the lack of end latitudes and end longitudes, there are missing point-to-point distance values. Furthermore, we discovered that the duration was either zero or negative. The records may be the result of a faulty recording. The script below was used to remove those records.
+
+
+```{r NAs Verification}
+# Remove rows with wrong Point-to-Point distance in Kms (End Lat & Long Missing)
+bikeshare2021 <- bikeshare2021[!is.na(bikeshare2021$p2p.distance_in_kms),]
+
+# Remove rows with Use service with 0 Minutes (Probably fault)
+bikeshare2021 <- bikeshare2021[!(bikeshare2021$use.length_in_mins == 0),]
+
+# Remove rows with wrong start Lat and Long (Wrong records)
+bikeshare2021 <- bikeshare2021[!(bikeshare2021$use.length_in_mins < 0),]
+
+```
+
+The *station_id* has now been verified in accordance with the global position coordinates as shown below:
+
+```{r Verification of station identification numbers and names}
+
+station_id.pos <- bikeshare2021 %>% select(start_station_id, start_lat, start_lng, start_station_name, end_station_id, end_lat, end_lng, end_station_name, use.length_in_mins, p2p.distance_in_kms )
+#
+n_rows <- 0
+while(n_rows < 5) {
+  station_id.sample <- sample_n(station_id.pos,100000) %>% 
+    filter(start_station_id == '13022') %>% 
+    filter(end_station_id == '13001')
+  n_rows <- nrow(station_id.sample)
+}
+#
+station_id.sample
+
+# Clean unused data frames
+rm(station_id.pos)
+rm(station_id.sample)
+```
+It is apparent that there is a discrepancy between the *station_id* and their position coordinates. Our next step was to create a dictionary of "station ids" in order to fill in any missing data regarding end position coordinates and end names id.
+
+```{r Dictionary for Id Stations}
+# Create start stations register
+start.stations <- bikeshare2021 %>% select(start_station_id,start_station_name, start_lat, start_lng) %>% drop_na()
+start.stations <- start.stations[!duplicated(start.stations$start_station_id),]
+names(start.stations) <- c("station_id",  "station_name", "lat", "lng")
+
+# Create end stations register
+end.stations <- bikeshare2021 %>% select(end_station_id, end_station_name, end_lat, end_lng) %>% drop_na()
+end.stations <- end.stations[!duplicated(end.stations$end_station_id),]
+names(end.stations) <- c("station_id",  "station_name", "lat", "lng")
+
+# Create Stations register dictionary with outer-join between start and end stations
+# stations.data <- merge(x=start.stations,y=end.stations,by="station_id", all=TRUE)
+stations.book <- rbind(start.stations, end.stations)
+stations.book <- stations.book[!duplicated(stations.book$station_id),]
+
+# Get station stored in station book given lat and lng
+get_station_id_name_by <- function(qlat, qlng){
+  stations.book[stations.book$lat == qlat && stations.book$lng == qlng,] #[1,]
+}
+
+
+# Clean temporal data
+rm(start.stations, end.stations)
+```
+
+and, 
+
+```{r Remove Missing End corrdinates position rows}
+ cbind(sample_n(bikeshare2021[is.na(bikeshare2021$end_station_id),] %>% 
+            select(end_lat, end_lng), 10),
+ sample_n(bikeshare2021, 10) %>% select(end_lat, end_lng))
+
+```
+
+Upon observing that missing values are due to an error in recording coordinate positions, we proceed to remove those rows using the following script.
+
+
+```{r Remove End Station Missing Ids rows}
+
+bikeshare2021 <- bikeshare2021[!is.na(bikeshare2021$end_station_id),]
+
+```
+
+Generally, the Chicago stations are distributed as follows:
+
+```{r Chicago stations visualization, message=FALSE}
+library(sf)
+library(mapview)
+library(maps)
+library(rgdal)
+library(sp)
+library(leaflet)
+
+
+# Web Resources
+# https://rstudio.github.io/leaflet/markers.html
+#
+# chicago.map <- map('county','illinois')
+# leaflet(chicago.map) %>% addTiles() %>% 
+#  addPolygons(stroke = TRUE, smoothFactor = 0.3, fillOpacity = 0.5)
+names(stations.book)[c(3,4)] <- c("Latitude", "Longitude")
+leaflet(stations.book) %>% addTiles() %>% 
+       addCircleMarkers(color = "Blue", radius = 1)
+
+```
+
+
+### Data Exploration 
+
+Currently, there are over 4 million records in the dataset. A phenomenon known as convergence can be used to obtain a representative sample. An instance value is selected at randomly from a population, one at a time, to take a sample. We start with a sample size of 0. Different sizes of random samples drawn from the same population will have different variability measures. As a larger and larger random sample is taken, the degree of variability between the smaller and larger samples tends to decrease. With the increase in sample size, the amount of fluctuation between successive samples decreases, and the number of measurements of variability converges toward a specific value. 
+
+Due to this convergence property, we can determine the level of confidence in a variable's variability. There is a corresponding decrease in the amount of variability difference for each additional instance as the sample size increases. At some point, we can be certain with an arbitrary degree of certainty that more instances of data will not alter the variability by more than a particular amount ^[Pyle, D. (1999). Data preparation for data mining, Ch5, pp.144-175. Morgan Kaufmann.].
+
+In this section we started to analyze the convergence variablity for the following variables: `member_casual`, `ridable_type`, `p2p_distance_in_kms`, `use.length_in_mins`. The following scripts were used to verify mentioned variables.
+
+```{r Sample size and variablity, message=FALSE}
+
+library(vcd)
+library(vcdExtra)
+
+## Five summary and Standard Deviation Character Representation
+summary.string <- function(numeric.var){
+  nas.count <- sum(is.na(numeric.var))
+  v.names <- c("min:", "p25:", "median:", "mean:", "p75:", "max:", "stdev:")
+  #
+  if(nas.count > 0) {
+    v.names <- c("min:", "p25:", "median:", "mean:", "p75:", "max:", "na's:", "stdev:") 
+  }
+  #
+  results <- paste(v.names, 
+                   round(c(summary(numeric.var), stdev = sd(numeric.var, na.rm = TRUE)), digits = 2))
+  paste(results, collapse = ",  ")
+}
+
+## Helper Method for Histogram and Boxplot Plot
+hist.boxplot <- function(numeric.var, 
+                         main.hist = "", 
+                         xlab.hist = "", 
+                         main.boxplot = "", 
+                         xlab.boxplot = summary.string(numeric.var)){
+  nf <- layout(mat = matrix(c(1,2),2,1, byrow = TRUE),  height = c(2,3))
+  par(mar=c(5.1, 4.1, 1.1, 2.1))
+  boxplot(numeric.var, horizontal = TRUE,  outline = TRUE, main = main.boxplot,
+          ylim=c(min(numeric.var, na.rm = TRUE), max(numeric.var, na.rm = TRUE)), 
+          xlab = xlab.boxplot, frame.plot = TRUE, axes = TRUE, col = 'orange', pch = 20)
+  #
+  par(new  = TRUE)
+  stripchart(numeric.var, pch = 15, col = 'darkblue', frame.plot = FALSE, axes = F, 
+             ylim = c(10, 0))
+  #
+  hist(numeric.var, xlim=c(min(numeric.var, na.rm = TRUE), max(numeric.var, na.rm = TRUE)), 
+       main = main.hist, xlab = xlab.hist, col = 'black', density = 20)
+  par(mfrow = c(1,1))
+}
+
+## Helper Method for Rate of Variation Plot
+plot.ratevariation <- function(numeric.var){
+  cumulative <- cum.apply(numeric.var, sd, na.rm = TRUE)
+  plot(cumulative, pch = 10, type = 'l', main = "Rate of Variation", 
+       xlab = "Variability Sample", ylab = "Confidence on Convergence", 
+       col = 'darkblue', first.panel = grid())
+  abline(h = mean(cumulative, na.rm = TRUE), col = 'green')
+  cumulative
+}
+
+
+## Accumulative Apply Function for numerical Values
+cum.apply <- function(x, func, ...){
+  n <- 1:length(x)
+  unlist(lapply(n, function(index) func(x[1:index], ...)))
+}
+
+
+## Helper method for Histogram Boxplot plus Rate of Variation for Numerical Variables
+hist.boxplot_withratevar <- function(numeric.var, 
+                                     main.hist = "", 
+                                     xlab.hist = "", 
+                                     main.boxplot = "", 
+                                     xlab.boxplot = summary.string(numeric.var)){
+  #
+  nf <- layout(mat = matrix(c(1,1,3,2,2,4), 2, 3, byrow = TRUE),  height = c(2,3,5))
+  par(mar=c(5.1, 4.1, 2.1, 1.1))
+  # Boxplot Chart
+  boxplot(numeric.var, horizontal = TRUE,  outline = TRUE, main = main.boxplot,
+          ylim=c(min(numeric.var, na.rm = TRUE), max(numeric.var, na.rm = TRUE)), 
+          xlab = xlab.boxplot, frame.plot = TRUE, axes = TRUE, col = 'orange', pch = 20)
+  # StripChart added to Box plot
+  par(new  = TRUE)
+  stripchart(numeric.var, pch = 15, col = 'darkblue', frame.plot = FALSE, axes = F, ylim = c(10, 0))
+  # Histogram Plot
+  hist(numeric.var, xlim=c(min(numeric.var, na.rm = TRUE), max(numeric.var, na.rm = TRUE)), 
+       main = main.hist, xlab = xlab.hist, col = 'black', density = 20)
+  ## Rate of Variation Plot
+  x <- plot.ratevariation(numeric.var)
+  plot(cum.apply(x, sd, na.rm = TRUE), type = 'l', col = "darkred", first.panel = grid(),
+       xlab = "Index", ylab = "Variability of Convergence", main = "")
+  par(mfrow = c(1,1))
+}
+
+
+# Easy Single Row Frame Create using character vectors as column names
+data.frame_create <- function(names.colums_char, return.df = TRUE){
+  x <- matrix(0, nrow = 1, ncol = length(names.colums_char))
+  colnames(x) <- names.colums_char
+  if(return.df) data.frame(x)
+  else x
+}
+
+## Rate of Discovery for a categorical variables
+rate.of_discovery <- function(categorical.var){
+  if(is.numeric(categorical.var)) stop("Variable must be Factor or Character Type")
+  #
+  features <- tolower(as.character(unique(categorical.var)))
+  counter <- 1:length(categorical.var)
+  #
+  results <- do.call(rbind, lapply(counter, function(index){
+    def.row <- data.frame_create(features)
+    prop.row <- prop.table(table(categorical.var[1:index]))
+    names(prop.row) <- tolower(as.character(names(prop.row)))
+    prop.row <- t(as.matrix(prop.row))
+    #
+    def.row[colnames(prop.row)]  <- c(prop.row)
+    names(def.row) <- tolower(names(def.row))
+    def.row
+  }))
+  #
+  results <- data.frame(results)
+  results
+}
+
+##
+plot.categorical <- function(categorical.var){
+  tabulated <- table(categorical.var)
+  tabulated <- as.data.frame(tabulated)
+  tabulated$Prop <- round(tabulated$Freq/sum(tabulated$Freq), digits = 3)
+  names(tabulated) <- c("Levels", "Freq", "Prop")
+  tabulated <- tabulated %>% arrange(Freq)
+  #
+  tabulated$Levels <- factor(tabulated$Levels)
+  tabulated$Freq   <- factor(tabulated$Freq)
+  tabulated$Prop   <- factor(tabulated$Prop)
+  #
+  p <- ggplot(tabulated, aes(x = Freq, y = Prop, fill = Levels)) + 
+    geom_bar(stat = "identity", position = "identity", colour = 'Black') + scale_fill_hue(l=20)
+  #scale_fill_brewer(palette="Set3")
+  p
+}
+
+##
+plot.categorical_withrateofdiscovery <- function(categorical.var){
+  #Helper Method
+  stack.rateofdiscovery_df <- function(results){
+    result <- lapply(names(results), function(name) {
+      index <- length(name)
+      result <- cbind.data.frame(results[name], name)
+      colnames(result) <- c("value", "variable")
+      result
+    })
+    #
+    result <- lapply(result, function(x) {
+      cbind.data.frame(index = 1:nrow(x), x)})
+    result
+  }
+  #
+  #
+  results <- stack.rateofdiscovery_df(rate.of_discovery(categorical.var))
+  p1 <- ggplot(data = do.call(rbind, results), aes(x=index, y=as.numeric(value))) + 
+    geom_line(aes(colour=variable)) + theme_bw()
+  p2 <- plot.categorical(categorical.var) + theme_bw()
+  #
+  grid.newpage()
+  pushViewport(viewport(layout = grid.layout(1, 2)))
+  vplayout <- function(x, y) viewport(layout.pos.row = x, layout.pos.col = y)
+  #
+  print(p2, vp = vplayout(1,1))
+  print(p1, vp = vplayout(1,2))    
+}
+
+```
+Figure \@ref(fig:fig1), shows the variability convergence for the variable `use.length_in_min` which represents the time that customer use the service.
+
+```{r fig1, fig.cap="Variability convergence for Customer use in Minutes", echo=FALSE}
+bikeshare2021.sample <- sample_n(bikeshare2021, 10000)
+hist.boxplot_withratevar(bikeshare2021.sample$use.length_in_mins)
+```
+
+as we may observe in Fig. \@ref(fig:fig1), the variability converges near $n = 6000$. Furthermore, their distribution shape indicates we have extreme values to consider in further analysis.
+
+Figure \@ref(fig:fig2) shows the variability converge near $n = 6000$. Also we obtained a heavy tail distribution for the point to point distance variable.
+
+```{r fig2, fig.cap="Variability convergence for point-to-point distance in Kms", echo=FALSE}
+hist.boxplot_withratevar(bikeshare2021.sample$p2p.distance_in_kms)
+```
+
+
+
+```{r fig3, fig.cap="Variability convergence for the categorical variable `member_casual`", echo=FALSE}
+plot.categorical_withrateofdiscovery(bikeshare2021.sample$member_casual)
+```
+
+Figure \@ref(fig:fig3) shows the distribution for the categorical variable
+`member_casual`. In fig. \@ref(fig:fig3) we observe the proportion for the two categories `casual`and `member` customers which are similar. The variability convergence for this particular sample for two categories less than $n = 2000$.
+
+
+```{r fig4, fig.cap="Variability convergence for categorical variable `rideable_type`", echo=FALSE}
+plot.categorical_withrateofdiscovery(bikeshare2021.sample$rideable_type)
+```
+
+It can be seen from the fig. \@ref(fig:fig4) that the variability convergence is quite similar with less than $n = 2000$. However, for the variable `rydable_type` we observe that the proportion of `docked_bike` is less than $7\%$, and we would only consider the categories `classic_bike` and `electric_bike` for the current analysis.
+
+Now, the following table presents the five summary for the entire dataset for the variables `p2p,distance_in_kms`, `use.lenght_in_mins`,
+
+```{r Tukey Five-number summary 1, echo=FALSE}
+five.summary <- data.frame(rbind(fivenum(bikeshare2021$p2p.distance_in_kms),
+fivenum(bikeshare2021$use.length_in_mins)))
+#
+colnames(five.summary) <- c('min','p25','median','p75','max') 
+rownames(five.summary) <- c('Point-to-Point distance in kms','Customer use service in minutes')
+five.summary
+# Clean table
+rm(five.summary)
+```
+where we observe that, customer data gathered includes customers who pick up a bike at certain points and end service at a point that is approximately $33$ kilometers away from where they initially picked up the bike. This dataset also contains customers who have used the service for $40$ days. There is certainly a need to verify these extreme values with the financial department if they really exist and customers are willing to pay for that long a period.
+
+In order to identify a pattern of customer behavior, the next step was to examine variable relationships. We constructed a two-way proportion table to verify the relationship between customers who are members and the kinds of services they use. The table is expressed as follows:
+
+```{r Two-way propotion table for `member_casua` and `readble_type` relationship }
+kable(round(prop.table(xtabs(~ member_casual + rideable_type, 
+                              data = bikeshare2021))*100,2))
+```
+
+whose graphical representation can be observed in fig. \@ref(fig:fig5). Figure \@ref(fig:fig5) depicts that casual customers are more likely to use docked and electric bikes, while members are more likely to use classic bikes. 
+
+```{r fig5, fig.cap="Moscaic plot to explore relationship between Product and Membership type", echo=FALSE}
+mosaic(~ member_casual + rideable_type, 
+       data = bikeshare2021, #highlighting ="rideable_type",
+       shade = T,
+       direction = c("h","v"),
+       set_labels = list(member_casual = c("Casual", "Member"), 
+                         rideable_type = c("Classic", "Docked",
+                                           "Electric")), 
+       set_varnames = list(member_casual = "Customer Type", 
+                           rideable_type = "Product" ))
+```
+
+Figure \@ref(fig:fig6) illustrates the relationship between the type of service, the customer, and the month. The fig. \@ref(fig:fig6) illustrates that causal customers use the electric bike throughout the year, while classic bikes are also used during the months of July and August, whereas customer members are generally accustomed to using classic bikes throughout the year.
+
+```{r fig6, fig.cap="Moscaic plot to explore relationship between Product  Membership type and moths", echo=FALSE}
+mosaic(~ member_casual + month + rideable_type, 
+       data = bikeshare2021, #highlighting ="rideable_type",
+       shade = T,
+       highlighting_fill = c("goldenrod4", 'goldenrod2'),
+       direction = c("h","v","h"), 
+       set_labels = list(month=month.name, member_casual = c("Casual", "Member"), 
+                         rideable_type = c("Classic", "Docked", "Electric")), 
+       set_varnames = list(member_casual = "Customer Type", month = "", rideable_type = "Product" ),
+       gp_varnames = gpar(fontsize = 12, fontface = 2),
+       gp_labels = gpar(fontsize = 8, fontface = 2),
+       offset_labels = c(1.2, 1, 0, 0),
+       rot_labels=c(90,0,0,90))
+```
+
+Our next step is to enhance the dataset in order to categorize the behavior by adding the following variables:
+
+- Point-to-Point distance with the following categories:
+  + Less than 1Km
+  + Between 1Km and 5Km
+  + More than 5 Km
+- Customer use service length in Min with the following caterogies:
+  + Less than 24 Hrs
+  + More than 24 and less than a week
+  + More than a week
+
+The follwing snippet to add the variables is given by
+
+```{r Enhance dataset with categorical variables 1}
+
+bikeshare2021 <- within(bikeshare2021, {
+ p2pdistcat <- NA
+ p2pdistcat[p2p.distance_in_kms <= 1] <- "Less than 1Km"
+ p2pdistcat[p2p.distance_in_kms > 1 & p2p.distance_in_kms < 5] <- "Between 1km and 5km"
+ p2pdistcat[p2p.distance_in_kms >= 5] <- "More than 5km"
+})    
+
+
+bikeshare2021 <- within(bikeshare2021, {
+ use.timemin_cat <- NA
+ use.timemin_cat[use.length_in_mins <= 1440] <- "Less than 24Hrs"
+ use.timemin_cat[use.length_in_mins > 1440 & use.length_in_mins < 10080] <- "Between 1 Day and 1 Week"
+ use.timemin_cat[use.length_in_mins >= 10080] <- "More than a Week"
+}) 
+
+```
+
+Now, first we may verify the proportions of customers using the service for a given time
+
+```{r Proportion of customers for a given user time lenght}
+prop.table(table(bikeshare2021$use.timemin_cat))*100
+```
+As we may observe, the proportion of customers users more than day is low, we may filter this data by performing
+
+```{r Filter customer with low proporion of usage service}
+
+bikeshare2021 <- bikeshare2021 %>% filter(use.timemin_cat != "Between 1 Day and 1 Week" & use.timemin_cat != 'More than a Week')
+
+```
+
+Now, we may verify the relationship categorical using the following mosaic plots
+
+```{r  fig7, fig.cap="Moscaic plot to explore relationship between Product  Membership type and Pick-Leave range distance", echo=FALSE}
+bikeshare2021.sample <- sample_n(bikeshare2021, 10000)
+
+mosaic(~ member_casual +  rideable_type + p2pdistcat, 
+       data = bikeshare2021.sample, #highlighting ="rideable_type",
+       shade = T,
+       highlighting_fill = c("goldenrod4", 'goldenrod2'),
+       direction = c("h","v","h"), 
+       set_labels = list(month=month.name, member_casual = c("Casual",
+                                                             "Member"), 
+                         rideable_type = c("Classic", "Docked",
+                                           "Electric")), 
+       set_varnames = list(member_casual = "Customer Type", p2pdistcat = "Point2Point Distance in Kms", rideable_type = "Product" ),
+       gp_varnames = gpar(fontsize = 12, fontface = 2),
+       gp_labels = gpar(fontsize = 8, fontface = 2),
+       offset_labels = c(1.2, 1, 0, 0),
+       rot_labels=c(90,0,0,90))
+
+```
+
+Where Figure \@ref(fig:fig7) illustrates that, A member can pick up and leave a bike within a range of less than 1km to 5 km using the classic bike. Also, with a less than solid relationship, customers pick up and leave electric bikes more than 5 kilometers. Casual customers have strong relationship by picking and leaving electric bikes in a range of 5kms.
+
+# Conclusion
+
+In overall, analyzing this data, we found the following customers behavior
+
+- The relationship between members and customers who use classic bikes is strong, whereas casual members prefer electric bikes.
+- We found a strong relationship with customers who are members and they use - classic products for most of the year. Casual members are most likely to ride electric bikes.
+- A strong relationship exists between our customers who are members and the classic bikes they pick-up and drop-off in distances between 1k and 5km. 
+- Additionally, members who pick-up and drop-off at greater distances of more than 5km use the electric bikes.
+- As evidenced by the data, casual customers are more likely to pick up and leave the electric bike service once they have traveled more than 5km.
