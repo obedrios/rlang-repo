@@ -1,2 +1,2 @@
 # rlang-repo
- General R-topics repositry
+ General R-topics repository
